@@ -1,5 +1,5 @@
 -- main.lua (LocalScript) - StarterPlayerScripts
--- Updated: solid background, limited tabs, keybinds, ESP customization
+-- Updated: solid background, limited tabs, keybinds, ESP customization + rendering implementation
 
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
@@ -9,6 +9,7 @@ local SoundService      = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local camera = workspace.CurrentCamera
 
 --=====================================================
 -- Config
@@ -237,10 +238,10 @@ local function startFly()
 
 	Feature.flyConn = RunService.RenderStepped:Connect(function()
 		if not PlayerConfig.FlyEnabled then return end
-		local cam = workspace.CurrentCamera
+		camera = workspace.CurrentCamera
 		local move = Vector3.zero
-		local lv = cam.CFrame.LookVector
-		local rv = cam.CFrame.RightVector
+		local lv = camera.CFrame.LookVector
+		local rv = camera.CFrame.RightVector
 		local forward = Vector3.new(lv.X, 0, lv.Z).Unit
 		local right   = Vector3.new(rv.X, 0, rv.Z).Unit
 
@@ -252,7 +253,7 @@ local function startFly()
 		if Feature.flightInput.Down then move -= Vector3.yAxis end
 
 		Feature.flyBV.Velocity = move.Unit * PlayerConfig.FlySpeed * (move.Magnitude > 0 and 1 or 0)
-		Feature.flyBG.CFrame = cam.CFrame
+		Feature.flyBG.CFrame = camera.CFrame
 	end)
 end
 
@@ -324,6 +325,162 @@ task.defer(function()
 	bindCharacter()
 	applyWalkSpeed()
 end)
+
+--=====================================================
+-- ESP Rendering Implementation
+--=====================================================
+local ESP = {
+	espObjects = {},  -- table of {player = {box, tracer, name, health, aura}}
+	conn = nil
+}
+
+local function createESP(plr)
+	if ESP.espObjects[plr] then return end  -- already exists
+
+	local function getRoot() return plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") end
+	local function getHum() return plr.Character and plr.Character:FindFirstChild("Humanoid") end
+
+	local box = make("Square", { -- Using Drawing
+		Thickness = 1.5,
+		Transparency = 1,
+		Filled = false,
+		Visible = false,
+		Color = ESPConfig.Color
+	})
+	local tracer = make("Line", {
+		Thickness = 1,
+		Transparency = 1,
+		Visible = false,
+		Color = ESPConfig.Color
+	})
+	local nameText = make("Text", {
+		Size = 14,
+		Center = true,
+		Outline = true,
+		Visible = false,
+		Color = ESPConfig.Color
+	})
+	local healthText = make("Text", {
+		Size = 12,
+		Center = true,
+		Outline = true,
+		Visible = false,
+		Color = ESPConfig.Color
+	})
+	local aura = make("Highlight", {
+		Enabled = false,
+		FillColor = ESPConfig.Color,
+		FillTransparency = 0.65,
+		OutlineTransparency = 0.2,
+		OutlineColor = ESPConfig.Color,
+		Parent = plr.Character or workspace  -- temporary
+	})
+
+	ESP.espObjects[plr] = {box = box, tracer = tracer, name = nameText, health = healthText, aura = aura}
+end
+
+local function destroyESP(plr)
+	local objs = ESP.espObjects[plr]
+	if not objs then return end
+
+	objs.box:Remove()
+	objs.tracer:Remove()
+	objs.name:Remove()
+	objs.health:Remove()
+	if objs.aura then objs.aura:Destroy() end
+
+	ESP.espObjects[plr] = nil
+end
+
+local function updateESP()
+	for plr, objs in pairs(ESP.espObjects) do
+		local char = plr.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChild("Humanoid")
+		local visible = ESPConfig.Enabled and root and hum and hum.Health > 0 and plr ~= player
+
+		objs.box.Visible = visible and ESPConfig.ShowBox
+		objs.tracer.Visible = visible and ESPConfig.ShowTracer
+		objs.name.Visible = visible and ESPConfig.ShowName
+		objs.health.Visible = visible and ESPConfig.ShowHealth
+		objs.aura.Enabled = visible and ESPConfig.Aura
+
+		if visible then
+			local head = char:FindFirstChild("Head")
+			local vector, onScreen = camera:WorldToViewportPoint(root.Position)
+			if not onScreen then
+				objs.box.Visible = false
+				objs.tracer.Visible = false
+				objs.name.Visible = false
+				objs.health.Visible = false
+				objs.aura.Enabled = false
+				continue
+			end
+
+			-- Box
+			local top = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+			local bottom = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+			local size = Vector2.new(math.abs(top.X - bottom.X) * 1.8, math.abs(top.Y - bottom.Y) * 1.2)
+			objs.box.Size = size
+			objs.box.Position = Vector2.new(vector.X - size.X / 2, vector.Y - size.Y / 2)
+			objs.box.Color = ESPConfig.Color
+
+			-- Tracer
+			objs.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+			objs.tracer.To = Vector2.new(vector.X, vector.Y)
+			objs.tracer.Color = ESPConfig.Color
+
+			-- Name
+			objs.name.Text = plr.Name
+			objs.name.Position = Vector2.new(vector.X, vector.Y - size.Y / 2 - 16)
+			objs.name.Color = ESPConfig.Color
+
+			-- Health
+			if hum then
+				objs.health.Text = math.floor(hum.Health) .. "/" .. hum.MaxHealth
+				objs.health.Position = Vector2.new(vector.X + size.X / 2 + 4, vector.Y - size.Y / 2)
+				objs.health.Color = Color3.fromHSV(hum.Health / hum.MaxHealth / 3, 1, 1)
+			end
+
+			-- Aura
+			objs.aura.Adornee = char
+			objs.aura.FillColor = ESPConfig.Color
+			objs.aura.OutlineColor = ESPConfig.Color
+		end
+	end
+end
+
+local function toggleESP(v)
+	ESPConfig.Enabled = v
+	notify(v and "good" or "warn", "ESP " .. (v and "enabled" or "disabled"))
+
+	if v then
+		for _, plr in Players:GetPlayers() do
+			if plr ~= player then createESP(plr) end
+		end
+		ESP.conn = RunService.RenderStepped:Connect(updateESP)
+	else
+		safeDisconnect(ESP.conn)
+		ESP.conn = nil
+		for plr in pairs(ESP.espObjects) do
+			destroyESP(plr)
+		end
+	end
+end
+
+-- Listen for players
+Players.PlayerAdded:Connect(function(plr)
+	if ESPConfig.Enabled then createESP(plr) end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+	destroyESP(plr)
+end)
+
+-- Initial setup
+for _, plr in Players:GetPlayers() do
+	if plr ~= player then createESP(plr) end
+end
 
 --=====================================================
 -- UI Helpers
@@ -712,6 +869,10 @@ local function buildUI()
 	make("UICorner", {CornerRadius = UDim.new(0,16), Parent = sidebar})
 	make("UIStroke", {Color = Theme.Orange1, Transparency = 0.8, Parent = sidebar})
 
+	make("UIPadding", {PaddingTop = UDim.new(0,12), PaddingBottom = UDim.new(0,12), PaddingLeft = UDim.new(0,12), PaddingRight = UDim.new(0,12), Parent = sidebar})
+
+	local sideLayout = make("UIListLayout", {Padding = UDim.new(0,8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sidebar})
+
 	local pagesWrap = make("Frame", {
 		BackgroundColor3 = Theme.PanelBlack2,
 		BackgroundTransparency = 0.15,
@@ -789,7 +950,7 @@ local function buildUI()
 		local b = make("TextButton", {
 			Text = "",
 			BackgroundColor3 = Theme.Button,
-			Size = UDim2.new(1,-24,0,46),
+			Size = UDim2.new(1,0,0,46),
 			Parent = sidebar
 		})
 		make("UICorner", {CornerRadius = UDim.new(0,12), Parent = b})
@@ -841,12 +1002,12 @@ local function buildUI()
 		{"Settings", "⚙️"},
 	}
 
-	for _, t in ipairs(tabs) do
+	for i, t in ipairs(tabs) do
 		local name, icon = t[1], t[2]
 		local btn = mkTabButton(name, icon, name)
 		btn.MouseButton1Click:Connect(function()
 			playSound("Click")
-			pageLayout:JumpToIndex(table.find(tabs, t))
+			pageLayout:JumpToIndex(i - 1)  -- 0-based index
 			selectTab(name)
 		end)
 	end
@@ -892,11 +1053,7 @@ local function buildUI()
 
 		local _, refESP = mkToggleRow(list, "ESP Enabled",
 			function() return ESPConfig.Enabled end,
-			function(v)
-				ESPConfig.Enabled = v
-				notify(v and "good" or "warn", "ESP " .. (v and "enabled" or "disabled"))
-				-- Connect real ESP loop here if you have one
-			end
+			toggleESP
 		)
 		mkKeybindRow(list, "ESP", function() return Keybinds.ESP end, function(k) Keybinds.ESP = k end)
 
@@ -1080,8 +1237,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	if Keybinds.Fly    and k == Keybinds.Fly    then toggleFly   (not PlayerConfig.FlyEnabled)    end
 	if Keybinds.Noclip and k == Keybinds.Noclip then toggleNoclip(not PlayerConfig.NoclipEnabled) end
 	if Keybinds.ESP    and k == Keybinds.ESP    then
-		ESPConfig.Enabled = not ESPConfig.Enabled
-		notify(ESPConfig.Enabled and "good" or "warn", "ESP " .. (ESPConfig.Enabled and "on" or "off"))
+		toggleESP(not ESPConfig.Enabled)
 	end
 
 	-- Add more keybind actions here (Aimbot etc.)
