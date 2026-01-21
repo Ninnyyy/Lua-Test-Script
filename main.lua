@@ -543,7 +543,7 @@ end
 
 v11.ESPTab = v11.CreateTabButton("ESP", v11.ESPSettingsFrame)
 v11.ColorsTab = v11.CreateTabButton("ESP COLORS", v11.ESPColorsFrame)
-v11.FeaturesTab = v11.CreateTabButton("FEATURES(MORE SOON)", v11.GameFeaturesFrame)
+v11.FeaturesTab = v11.CreateTabButton("FEATURES", v11.GameFeaturesFrame)
 v11.VisualTab = v11.CreateTabButton("VISUAL", v11.VisualSettingsFrame)
 
 v11.ESPTab.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
