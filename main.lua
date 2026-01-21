@@ -98,13 +98,36 @@ v11.TitleCorner.Parent = v11.TitleFrame
 
 v11.TitleLabel = Instance.new("TextLabel")
 v11.TitleLabel.Name = "TitleLabel"
-v11.TitleLabel.Size = UDim2.new(1, 0, 1, 0)
+v11.TitleLabel.Size = UDim2.new(1, -40, 1, 0)
 v11.TitleLabel.BackgroundTransparency = 1
 v11.TitleLabel.Text = "Singularity-Ninny.top"
 v11.TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 v11.TitleLabel.TextSize = 16
 v11.TitleLabel.Font = Enum.Font.GothamBold
 v11.TitleLabel.Parent = v11.TitleFrame
+
+-- Close button
+v11.CloseButton = Instance.new("TextButton")
+v11.CloseButton.Name = "CloseButton"
+v11.CloseButton.Size = UDim2.new(0, 35, 0, 35)
+v11.CloseButton.Position = UDim2.new(1, -38, 0, 2)
+v11.CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+v11.CloseButton.BorderSizePixel = 0
+v11.CloseButton.Text = "✕"
+v11.CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+v11.CloseButton.TextSize = 16
+v11.CloseButton.Font = Enum.Font.GothamBold
+v11.CloseButton.Parent = v11.TitleFrame
+
+local v2043 = Instance.new("UICorner")
+v2043.CornerRadius = UDim.new(0, 6)
+v2043.Parent = v11.CloseButton
+
+v11.CloseButton.MouseButton1Click:Connect(function()
+    v11.MainFrame.Position = UDim2.new(0, -470, 0, 100)
+    v11.MenuOpen = false
+    print("Menu: CLOSED")
+end)
 
 v11.TabButtonsFrame = Instance.new("Frame")
 v11.TabButtonsFrame.Name = "TabButtonsFrame"
@@ -4076,6 +4099,69 @@ v11.EvasionLayout = Instance.new("UIListLayout")
 v11.EvasionLayout.Padding = UDim.new(0, 15)
 v11.EvasionLayout.Parent = v11.EvasionFrame
 
+-- ========== KEYBIND SYSTEM ==========
+v11.Keybinds = {}
+v11.KeybindAssignMode = false
+v11.CurrentAssignTarget = nil
+
+v11.AssignKeybind = function(v2029, v2030)
+    v11.Keybinds[v2029] = v2030
+    print("[KEYBIND] " .. v2029 .. " set to " .. tostring(v2030))
+end
+
+v11.GetKeybind = function(v2029)
+    return v11.Keybinds[v2029]
+end
+
+v11.CreateKeybindButton = function(v2031, v2032, v2033)
+    local v2034 = Instance.new("Frame")
+    v2034.Name = v2031 .. "Keybind"
+    v2034.Size = UDim2.new(1, 0, 0, 50)
+    v2034.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    v2034.BorderSizePixel = 0
+    v2034.Parent = v2033
+    
+    local v2035 = Instance.new("UICorner")
+    v2035.CornerRadius = UDim.new(0, 8)
+    v2035.Parent = v2034
+    
+    local v2036 = Instance.new("TextLabel")
+    v2036.Name = "Label"
+    v2036.Size = UDim2.new(0, 200, 1, 0)
+    v2036.Position = UDim2.new(0, 10, 0, 0)
+    v2036.BackgroundTransparency = 1
+    v2036.Text = v2031
+    v2036.TextColor3 = Color3.fromRGB(255, 255, 255)
+    v2036.TextSize = 12
+    v2036.Font = Enum.Font.GothamBold
+    v2036.TextXAlignment = Enum.TextXAlignment.Left
+    v2036.Parent = v2034
+    
+    local v2037 = Instance.new("TextButton")
+    v2037.Name = "KeyButton"
+    v2037.Size = UDim2.new(0, 100, 0, 35)
+    v2037.Position = UDim2.new(1, -120, 0, 7)
+    v2037.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
+    v2037.BorderSizePixel = 0
+    v2037.Text = tostring(v11.Keybinds[v2031] or "UNSET")
+    v2037.TextColor3 = Color3.fromRGB(255, 255, 255)
+    v2037.TextSize = 11
+    v2037.Font = Enum.Font.GothamBold
+    v2037.Parent = v2034
+    
+    local v2038 = Instance.new("UICorner")
+    v2038.CornerRadius = UDim.new(0, 6)
+    v2038.Parent = v2037
+    
+    v2037.MouseButton1Click:Connect(function()
+        v11.CurrentAssignTarget = {name = v2031, button = v2037, feature = v2032}
+        v2037.Text = "PRESS KEY..."
+        v2037.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+    end)
+    
+    return v2034
+end
+
 v11.UtilityFrame = Instance.new("ScrollingFrame")
 v11.UtilityFrame.Name = "UtilityFrame"
 v11.UtilityFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -4088,6 +4174,21 @@ v11.UtilityFrame.Parent = v11.ContentFrame
 v11.UtilityLayout = Instance.new("UIListLayout")
 v11.UtilityLayout.Padding = UDim.new(0, 15)
 v11.UtilityLayout.Parent = v11.UtilityFrame
+
+-- ========== KEYBIND FRAME ==========
+v11.KeybindFrame = Instance.new("ScrollingFrame")
+v11.KeybindFrame.Name = "KeybindFrame"
+v11.KeybindFrame.Size = UDim2.new(1, 0, 1, 0)
+v11.KeybindFrame.BackgroundTransparency = 1
+v11.KeybindFrame.ScrollBarThickness = 4
+v11.KeybindFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 140, 0)
+v11.KeybindFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+v11.KeybindFrame.Visible = false
+v11.KeybindFrame.Parent = v11.ContentFrame
+
+v11.KeybindLayout = Instance.new("UIListLayout")
+v11.KeybindLayout.Padding = UDim.new(0, 15)
+v11.KeybindLayout.Parent = v11.KeybindFrame
 
 -- Create Tab Buttons for new features
 v11.CombatTab = v11.CreateTabButton("COMBAT", v11.CombatFrame)
@@ -4104,6 +4205,7 @@ v11.SkillsTab = v11.CreateTabButton("SKILL", v11.SkillsFrame)
 v11.PerfTab = v11.CreateTabButton("PERF", v11.PerfTweaksFrame)
 v11.EvasionTab = v11.CreateTabButton("EVADE", v11.EvasionFrame)
 v11.UtilityTab = v11.CreateTabButton("UTIL", v11.UtilityFrame)
+v11.KeybindTab = v11.CreateTabButton("KEYS", v11.KeybindFrame)
 
 -- ========== ADVANCED ESP IMPROVEMENTS ==========
 v11.ESPHealthBars = {}
@@ -5824,6 +5926,32 @@ v11.CreateButton("THEME: RAINBOW", function()
     print("Background Mode: RAINBOW")
 end, v11.QOLFrame)
 
+-- ========== KEYBIND SETUP ==========
+v11.CreateButton("Aimbot Keybind", function() end, v11.KeybindFrame)
+v11.CreateKeybindButton("Aimbot", v11.ToggleAimbot, v11.KeybindFrame)
+
+v11.CreateButton("Movement Keybinds", function() end, v11.KeybindFrame)
+v11.CreateKeybindButton("Fly Toggle", v11.ToggleFly, v11.KeybindFrame)
+v11.CreateKeybindButton("Noclip Toggle", v11.ToggleNoclip, v11.KeybindFrame)
+v11.CreateKeybindButton("Walk Speed", v11.ToggleWalkSpeed, v11.KeybindFrame)
+v11.CreateKeybindButton("JumpPower", v11.MovementFunctions.ToggleJumpPower, v11.KeybindFrame)
+
+v11.CreateButton("ESP Keybinds", function() end, v11.KeybindFrame)
+v11.CreateKeybindButton("ESP Toggle", v11.ToggleESP, v11.KeybindFrame)
+v11.CreateKeybindButton("RGB ESP", v11.ToggleRGBESP, v11.KeybindFrame)
+v11.CreateKeybindButton("Super ESP", v11.ToggleSuperESP, v11.KeybindFrame)
+
+v11.CreateButton("Combat Keybinds", function() end, v11.KeybindFrame)
+v11.CreateKeybindButton("God Mode", v11.ToggleGodMode, v11.KeybindFrame)
+v11.CreateKeybindButton("Invisible", v11.ToggleInvisible, v11.KeybindFrame)
+v11.CreateKeybindButton("AntiStun", v11.ToggleAntiStun, v11.KeybindFrame)
+v11.CreateKeybindButton("AntiGrab", v11.ToggleAntiGrab, v11.KeybindFrame)
+
+v11.CreateButton("Auto Features Keybinds", function() end, v11.KeybindFrame)
+v11.CreateKeybindButton("Auto Unhook", v11.ToggleAutoUnhook, v11.KeybindFrame)
+v11.CreateKeybindButton("Auto Skillcheck", v11.ToggleAutoSkillcheck, v11.KeybindFrame)
+v11.CreateKeybindButton("Auto Pallets", v11.ToggleAutoDropPallets, v11.KeybindFrame)
+
 -- EXTENDED AUTO FEATURES
 v11.CreateToggle("Path Navigation", v11.PathNavEnabled, function(v1680)
     v11.PathNavEnabled = v1680
@@ -6445,187 +6573,327 @@ v11.AnimateUIElements = function()
     end
 end
 
+-- ========== COMPREHENSIVE FEATURE INITIALIZATION ==========
+v11.InitializeAllFeatures = function()
+    -- Initialize all feature flags to false if not already set
+    local v1859 = {
+        "HealthBarEnabled", "DistanceDisplayEnabled", "TracerLinesEnabled",
+        "BoxESPEnabled", "TerrorRadiusEnabled", "MatchTimerEnabled", "SpeedometerEnabled",
+        "AutoUnhookEnabled", "AutoSkillcheckEnabled", "AutoDropPalletsEnabled",
+        "PredictionEnabled", "EscapeRouteEnabled", "DangerZoneEnabled",
+        "StatsTrackerEnabled", "BehaviorLoggerEnabled", "AntiCheatDetectorEnabled",
+        "RadarEnabled", "PathNavEnabled", "AutoObjectivesEnabled", "SmartDodgeEnabled",
+        "AutoLootEnabled", "AutoFarmEnabled", "LandmarkHighlightEnabled",
+        "WallPhaseEnabled", "CollisionBypassEnabled", "FramePerfectEnabled",
+        "HighlightDetectorEnabled", "AutoClipEnabled", "AIPathfinderEnabled",
+        "ThreatAssessmentEnabled", "ActionQueueEnabled", "RateLimiterEnabled",
+        "BehaviorRandomizerEnabled", "ActionRandomizerEnabled", "DelayInjectorEnabled",
+        "PerfProfilerEnabled"
+    }
+    
+    for v1858, v1858_val in ipairs(v1859) do
+        if v11[v1858_val] == nil then
+            v11[v1858_val] = false
+        end
+    end
+    
+    -- Initialize tables if not present
+    if not v11.ActionQueue then v11.ActionQueue = {} end
+    if not v11.ScheduledTasks then v11.ScheduledTasks = {} end
+    if not v11.MacroSequences then v11.MacroSequences = {} end
+    if not v11.PerfMetrics then v11.PerfMetrics = {} end
+    if not v11.MessageLog then v11.MessageLog = {} end
+    if not v11.SocialList then v11.SocialList = {} end
+    if not v11.LocalDB then v11.LocalDB = {} end
+    if not v11.BackupHistory then v11.BackupHistory = {} end
+    if not v11.AIMemory then v11.AIMemory = {} end
+    if not v11.PlayerStats then v11.PlayerStats = {} end
+    
+    print("[INIT] All features initialized successfully")
+end
+
+v11.InitializeAllFeatures()
+
+-- ========== FEATURE VALIDATION & REPAIR SYSTEM ==========
+v11.ValidateAndRepairFeatures = function()
+    -- Ensure all feature update functions have safe wrappers
+    local v1860 = {
+        "UpdateHealthBars", "UpdateDistanceDisplays", "UpdateTracerLines", 
+        "UpdateBoxESP", "UpdateTerrorRadius", "UpdateInfoOverlay", 
+        "AutoUnhook", "AutoSkillcheck", "AutoDropPallets",
+        "UpdateRadar", "AnimateBackgroundColor", "AnimateUIElements"
+    }
+    
+    for v1861, v1862 in ipairs(v1860) do
+        if not v11[v1862] then
+            v11[v1862] = function() end
+        end
+    end
+    
+    -- Ensure all feature toggle functions exist
+    local v1863 = v0:GetPlayers()
+    if #v1863 > 0 and not v9.Character then
+        print("[WARNING] Player not loaded yet")
+    end
+end
+
+v11.ValidateAndRepairFeatures()
+
 -- ========== MAIN UPDATE LOOP FOR NEW FEATURES ==========
 coroutine.wrap(function()
     while true do
         wait(0.016) -- 60 FPS
         
-        -- UI ANIMATIONS & EFFECTS
-        v11.AnimateBackgroundColor()
-        v11.AnimateUIElements()
+        pcall(function()
+            -- UI ANIMATIONS & EFFECTS
+            if v11.AnimateBackgroundColor then v11.AnimateBackgroundColor() end
+            if v11.AnimateUIElements then v11.AnimateUIElements() end
+        end)
         
-        if v11.HealthBarEnabled then
-            v11.UpdateHealthBars()
-        end
+        pcall(function()
+            if v11.HealthBarEnabled and v11.UpdateHealthBars then
+                v11.UpdateHealthBars()
+            end
+        end)
         
-        if v11.DistanceDisplayEnabled then
-            v11.UpdateDistanceDisplays()
-        end
+        pcall(function()
+            if v11.DistanceDisplayEnabled and v11.UpdateDistanceDisplays then
+                v11.UpdateDistanceDisplays()
+            end
+        end)
         
-        if v11.TracerLinesEnabled then
-            v11.UpdateTracerLines()
-        end
+        pcall(function()
+            if v11.TracerLinesEnabled and v11.UpdateTracerLines then
+                v11.UpdateTracerLines()
+            end
+        end)
         
-        if v11.BoxESPEnabled then
-            v11.UpdateBoxESP()
-        end
+        pcall(function()
+            if v11.BoxESPEnabled and v11.UpdateBoxESP then
+                v11.UpdateBoxESP()
+            end
+        end)
         
-        if v11.TerrorRadiusEnabled then
-            v11.UpdateTerrorRadius()
-        end
+        pcall(function()
+            if v11.TerrorRadiusEnabled and v11.UpdateTerrorRadius then
+                v11.UpdateTerrorRadius()
+            end
+        end)
         
-        if v11.MatchTimerEnabled or v11.SpeedometerEnabled then
-            v11.UpdateInfoOverlay()
-        end
+        pcall(function()
+            if (v11.MatchTimerEnabled or v11.SpeedometerEnabled) and v11.UpdateInfoOverlay then
+                v11.UpdateInfoOverlay()
+            end
+        end)
         
-        if v11.AutoUnhookEnabled then
-            v11.AutoUnhook()
-        end
+        pcall(function()
+            if v11.AutoUnhookEnabled and v11.AutoUnhook then
+                v11.AutoUnhook()
+            end
+        end)
         
-        if v11.AutoSkillcheckEnabled then
-            v11.AutoSkillcheck()
-        end
+        pcall(function()
+            if v11.AutoSkillcheckEnabled and v11.AutoSkillcheck then
+                v11.AutoSkillcheck()
+            end
+        end)
         
-        if v11.AutoDropPalletsEnabled then
-            v11.AutoDropPallets()
-        end
+        pcall(function()
+            if v11.AutoDropPalletsEnabled and v11.AutoDropPallets then
+                v11.AutoDropPallets()
+            end
+        end)
         
         -- PREDICTION & TARGETING
-        if v11.PredictionEnabled and v9.Character then
-            for v1800, v1801 in pairs(v0:GetPlayers()) do
-                if v1801 ~= v9 and v1801.Character then
-                    local v1802 = v11.CalculatePredictedPosition(v1801)
+        pcall(function()
+            if v11.PredictionEnabled and v9.Character and v11.CalculatePredictedPosition then
+                for v1800, v1801 in pairs(v0:GetPlayers()) do
+                    if v1801 ~= v9 and v1801.Character then
+                        local v1802 = v11.CalculatePredictedPosition(v1801)
+                    end
                 end
             end
-        end
+        end)
         
-        if v11.EscapeRouteEnabled then
-            v11.GetEscapeRoutes()
-        end
+        pcall(function()
+            if v11.EscapeRouteEnabled and v11.GetEscapeRoutes then
+                v11.GetEscapeRoutes()
+            end
+        end)
         
-        if v11.DangerZoneEnabled then
-            v11.AnalyzeDangerZones()
-        end
+        pcall(function()
+            if v11.DangerZoneEnabled and v11.AnalyzeDangerZones then
+                v11.AnalyzeDangerZones()
+            end
+        end)
         
         -- ANALYTICS
-        if v11.StatsTrackerEnabled then
-            for v1803, v1804 in pairs(v0:GetPlayers()) do
-                if v1804 ~= v9 then
-                    v11.UpdatePlayerStats(v1804)
+        pcall(function()
+            if v11.StatsTrackerEnabled and v11.UpdatePlayerStats then
+                for v1803, v1804 in pairs(v0:GetPlayers()) do
+                    if v1804 ~= v9 then
+                        v11.UpdatePlayerStats(v1804)
+                    end
                 end
             end
-        end
+        end)
         
-        if v11.BehaviorLoggerEnabled and v9.Character then
-            v11.LogBehavior(v9.Name, "moving")
-        end
+        pcall(function()
+            if v11.BehaviorLoggerEnabled and v9.Character and v11.LogBehavior then
+                v11.LogBehavior(v9.Name, "moving")
+            end
+        end)
         
-        if v11.AntiCheatDetectorEnabled then
-            v11.DetectAnticheat()
-        end
+        pcall(function()
+            if v11.AntiCheatDetectorEnabled and v11.DetectAnticheat then
+                v11.DetectAnticheat()
+            end
+        end)
         
         -- UI UPDATES
-        if v11.RadarEnabled and v11.RadarFrame then
-            v11.UpdateRadar()
-        end
+        pcall(function()
+            if v11.RadarEnabled and v11.RadarFrame and v11.UpdateRadar then
+                v11.UpdateRadar()
+            end
+        end)
         
         -- AUTO FEATURES (ALL)
-        if v11.PathNavEnabled and v9.Character then
-            local v1805 = v11.GetEscapeRoutes()
-            if #v1805 > 0 then
-                v11.NavigateToPoint(v1805[1].Position)
+        pcall(function()
+            if v11.PathNavEnabled and v9.Character and v11.GetEscapeRoutes then
+                local v1805 = v11.GetEscapeRoutes()
+                if v1805 and #v1805 > 0 and v11.NavigateToPoint then
+                    v11.NavigateToPoint(v1805[1].Position)
+                end
             end
-        end
+        end)
         
-        if v11.AutoObjectivesEnabled then
-            v11.ExecuteAutoObjectives()
-        end
+        pcall(function()
+            if v11.AutoObjectivesEnabled and v11.ExecuteAutoObjectives then
+                v11.ExecuteAutoObjectives()
+            end
+        end)
         
-        if v11.SmartDodgeEnabled then
-            v11.SmartDodge()
-        end
+        pcall(function()
+            if v11.SmartDodgeEnabled and v11.SmartDodge then
+                v11.SmartDodge()
+            end
+        end)
         
-        if v11.AutoLootEnabled then
-            v11.CollectNearbyLoot()
-        end
+        pcall(function()
+            if v11.AutoLootEnabled and v11.CollectNearbyLoot then
+                v11.CollectNearbyLoot()
+            end
+        end)
         
-        if v11.AutoFarmEnabled then
-            v11.AutoFarm()
-        end
+        pcall(function()
+            if v11.AutoFarmEnabled and v11.AutoFarm then
+                v11.AutoFarm()
+            end
+        end)
         
         -- MAP HACKING
-        if v11.LandmarkHighlightEnabled then
-            v11.HighlightLandmarks()
-        end
+        pcall(function()
+            if v11.LandmarkHighlightEnabled and v11.HighlightLandmarks then
+                v11.HighlightLandmarks()
+            end
+        end)
         
         -- ADVANCED MOVEMENT
-        if v11.WallPhaseEnabled then
-            v11.EnableWallPhase()
-        end
+        pcall(function()
+            if v11.WallPhaseEnabled and v11.EnableWallPhase then
+                v11.EnableWallPhase()
+            end
+        end)
         
-        if v11.CollisionBypassEnabled then
-            v11.BypassCollision()
-        end
+        pcall(function()
+            if v11.CollisionBypassEnabled and v11.BypassCollision then
+                v11.BypassCollision()
+            end
+        end)
         
         -- COMBAT FEATURES
-        if v11.FramePerfectEnabled and math.random(1, 100) < 5 then
-            print("[Combat] Frame perfect detected!")
-        end
+        pcall(function()
+            if v11.FramePerfectEnabled and math.random(1, 100) < 5 then
+                print("[Combat] Frame perfect detected!")
+            end
+        end)
         
         -- RECORDING
-        if v11.HighlightDetectorEnabled then
-            v11.DetectHighlight()
-        end
+        pcall(function()
+            if v11.HighlightDetectorEnabled and v11.DetectHighlight then
+                v11.DetectHighlight()
+            end
+        end)
         
-        if v11.AutoClipEnabled and v11.IsRecording then
-            -- Recording is active
-        end
+        pcall(function()
+            if v11.AutoClipEnabled and v11.IsRecording then
+                -- Recording is active
+            end
+        end)
         
         -- AI FEATURES
-        if v11.AIPathfinderEnabled and v9.Character then
-            v11.ComputeOptimalPath(v9.Character.PrimaryPart.Position)
-        end
+        pcall(function()
+            if v11.AIPathfinderEnabled and v9.Character and v11.ComputeOptimalPath then
+                v11.ComputeOptimalPath(v9.Character.PrimaryPart.Position)
+            end
+        end)
         
-        if v11.ThreatAssessmentEnabled then
-            v11.AssessThreat()
-        end
+        pcall(function()
+            if v11.ThreatAssessmentEnabled and v11.AssessThreat then
+                v11.AssessThreat()
+            end
+        end)
         
         -- NETWORK
-        if v11.ActionQueueEnabled and #v11.ActionQueue > 0 then
-            v11.ProcessActionQueue()
-        end
+        pcall(function()
+            if v11.ActionQueueEnabled and v11.ActionQueue and #v11.ActionQueue > 0 and v11.ProcessActionQueue then
+                v11.ProcessActionQueue()
+            end
+        end)
         
         -- SECURITY
-        if v11.RateLimiterEnabled then
-            v11.CheckRateLimit()
-        end
+        pcall(function()
+            if v11.RateLimiterEnabled and v11.CheckRateLimit then
+                v11.CheckRateLimit()
+            end
+        end)
         
-        if v11.BehaviorRandomizerEnabled then
-            if math.random(1, 100) < 5 then
+        pcall(function()
+            if v11.BehaviorRandomizerEnabled and math.random(1, 100) < 5 and v11.RandomizeBehavior then
                 v11.RandomizeBehavior()
             end
-        end
+        end)
         
-        if v11.ActionRandomizerEnabled and math.random(1, 100) < 3 then
-            v11.RandomizeActions()
-        end
+        pcall(function()
+            if v11.ActionRandomizerEnabled and math.random(1, 100) < 3 and v11.RandomizeActions then
+                v11.RandomizeActions()
+            end
+        end)
         
-        if v11.DelayInjectorEnabled and math.random(1, 100) < 5 then
-            v11.InjectRandomDelay()
-        end
+        pcall(function()
+            if v11.DelayInjectorEnabled and math.random(1, 100) < 5 and v11.InjectRandomDelay then
+                v11.InjectRandomDelay()
+            end
+        end)
         
         -- UTILITIES
-        if v11.PerfProfilerEnabled then
-            v11.ProfilePerformance()
-        end
+        pcall(function()
+            if v11.PerfProfilerEnabled and v11.ProfilePerformance then
+                v11.ProfilePerformance()
+            end
+        end)
         
         -- SCHEDULED TASKS
-        for v1806, v1807 in ipairs(v11.ScheduledTasks) do
-            if tick() >= v1807.time then
-                pcall(v1807.callback)
-                table.remove(v11.ScheduledTasks, v1806)
+        pcall(function()
+            if v11.ScheduledTasks then
+                for v1806, v1807 in ipairs(v11.ScheduledTasks) do
+                    if tick() >= v1807.time then
+                        pcall(v1807.callback)
+                        table.remove(v11.ScheduledTasks, v1806)
+                    end
+                end
             end
-        end
+        end)
     end
 end)()
 
@@ -6634,10 +6902,67 @@ v2.InputBegan:Connect(function(v1037, v1038)
         return
     end
     
+    -- Handle keybind assignment
+    if v11.CurrentAssignTarget then
+        local v2039 = tostring(v1037.KeyCode):gsub("Enum.KeyCode.", "")
+        v11.AssignKeybind(v11.CurrentAssignTarget.name, v2039)
+        
+        if v11.CurrentAssignTarget.button then
+            v11.CurrentAssignTarget.button.Text = v2039
+            v11.CurrentAssignTarget.button.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+        end
+        
+        v11.CurrentAssignTarget = nil
+        return
+    end
+    
     if v1037.KeyCode == Enum.KeyCode.F1 then
         v11.ToggleMenu()
     elseif v1037.KeyCode == Enum.KeyCode.K then
         v11.AimbotFunctions.toggleAimbot()
+    else
+        -- Check for custom keybinds
+        local v2040 = tostring(v1037.KeyCode):gsub("Enum.KeyCode.", "")
+        
+        for v2041, v2042 in pairs(v11.Keybinds) do
+            if v2042 == v2040 then
+                -- Execute the bound feature
+                if v2041 == "Aimbot" and v11.AimbotFunctions then
+                    v11.AimbotFunctions.toggleAimbot()
+                elseif v2041 == "Fly Toggle" and v11.ToggleFly then
+                    v11.ToggleFly(not v11.FlyEnabled)
+                elseif v2041 == "Noclip Toggle" and v11.ToggleNoclip then
+                    v11.ToggleNoclip(not v11.NoclipEnabled)
+                elseif v2041 == "Walk Speed" and v11.ToggleWalkSpeed then
+                    v11.ToggleWalkSpeed(not v11.walkSpeedActive)
+                elseif v2041 == "JumpPower" and v11.MovementFunctions then
+                    v11.MovementFunctions.ToggleJumpPower(not v11.JumpPowerEnabled)
+                elseif v2041 == "ESP Toggle" and v11.ToggleESP then
+                    v11.ToggleESP(not v11.ESPEnabled)
+                elseif v2041 == "RGB ESP" and v11.ToggleRGBESP then
+                    v11.ToggleRGBESP(not v11.RGBESPEnabled)
+                elseif v2041 == "Super ESP" and v11.ToggleSuperESP then
+                    v11.ToggleSuperESP(not v11.SuperESPEnabled)
+                elseif v2041 == "God Mode" and v11.ToggleGodMode then
+                    v11.ToggleGodMode(not v11.GodModeEnabled)
+                elseif v2041 == "Invisible" and v11.ToggleInvisible then
+                    v11.ToggleInvisible(not v11.InvisibleEnabled)
+                elseif v2041 == "AntiStun" and v11.ToggleAntiStun then
+                    v11.ToggleAntiStun(not v11.AntiStunEnabled)
+                elseif v2041 == "AntiGrab" and v11.ToggleAntiGrab then
+                    v11.ToggleAntiGrab(not v11.AntiGrabEnabled)
+                elseif v2041 == "Auto Unhook" and v11.ToggleAutoUnhook then
+                    v11.ToggleAutoUnhook(not v11.AutoUnhookEnabled)
+                elseif v2041 == "Auto Skillcheck" and v11.ToggleAutoSkillcheck then
+                    v11.ToggleAutoSkillcheck(not v11.AutoSkillcheckEnabled)
+                elseif v2041 == "Auto Pallets" and v11.ToggleAutoDropPallets then
+                    v11.ToggleAutoDropPallets(not v11.AutoDropPalletsEnabled)
+                end
+                
+                print("[KEYBIND] " .. v2041 .. " triggered by " .. v2040)
+                break
+            end
+        end
     end
 end)
 
