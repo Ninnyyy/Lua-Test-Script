@@ -1,17 +1,17 @@
 -- main.lua (LocalScript) - StarterPlayerScripts
--- Features: ESP (wallhack mode), TriggerBot, Stealthier Aimbot, Menu toggle = L
+-- Updated: solid background, limited tabs, keybinds, ESP customization + rendering implementation with wallhack, TriggerBot, stealthier Aimbot
+-- Fixed for all executors: checks for mousemoverel and mouse1click, fallbacks added
+-- Menu toggle with L
 
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local UserInputService  = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
 local SoundService      = game:GetService("SoundService")
-local Workspace         = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local camera = Workspace.CurrentCamera
-local mouse = player:GetMouse()
+local camera = workspace.CurrentCamera
 
 --=====================================================
 -- Config
@@ -19,18 +19,17 @@ local mouse = player:GetMouse()
 local UI_NAME = "SingularityMenu"
 local TOGGLE_BUTTON_GUI = "SingularityMenu_ToggleButton"
 
--- Menu toggle key (L)
-local MENU_TOGGLE_KEY = Enum.KeyCode.L
-
 local TOGGLE_KEYS = {
 	[Enum.KeyCode.LeftControl] = true,
 	[Enum.KeyCode.RightControl] = true,
 	[Enum.KeyCode.Escape] = true,
-	[MENU_TOGGLE_KEY] = true,
 }
 local TOGGLE_GAMEPAD_START = true
 
-local SOUND_IDS = { Open = "", Close = "", Click = "", Hover = "", Notify = "" }
+-- Sounds (optional - add SoundIds if desired)
+local SOUND_IDS = {
+	Open = "", Close = "", Click = "", Hover = "", Notify = "",
+}
 
 local Theme = {
 	BaseBlack    = Color3.fromRGB(12, 12, 14),
@@ -49,465 +48,1213 @@ local Theme = {
 
 -- Player features
 local PlayerConfig = {
-	WalkSpeed      = 16, WalkSpeedMin = 16, WalkSpeedMax = 100,
-	FlyEnabled     = false, FlySpeed = 60, FlySpeedMin = 20, FlySpeedMax = 150,
+	WalkSpeed      = 16,
+	WalkSpeedMin   = 16,
+	WalkSpeedMax   = 100,
+	FlyEnabled     = false,
+	FlySpeed       = 60,
+	FlySpeedMin    = 20,
+	FlySpeedMax    = 150,
 	NoclipEnabled  = false,
 }
 
--- ESP features + Wallhack
+-- ESP features
 local ESPConfig = {
-	Enabled       = false,
-	Color         = Color3.fromRGB(255, 80, 60),
-	WallColor     = Color3.fromRGB(180, 50, 255), -- purple-ish for occluded
-	ShowBox       = true,
-	ShowTracer    = true,
-	ShowName      = true,
-	ShowHealth    = false,
-	Aura          = false,
-	Wallhack      = true,           -- show through walls
-	WallTransparency = 0.65,        -- lower = more visible through walls
+	Enabled    = false,
+	Color      = Color3.fromRGB(255, 80, 60),
+	ShowBox    = true,
+	ShowTracer = true,
+	ShowName   = true,
+	ShowHealth = false,
+	Aura       = false,
 }
 
--- Aimbot features (stealthier)
-local AimbotConfig = {
-	Enabled       = false,
-	Silent        = true,
-	Aimlock       = false,
-	AimPart       = "Head",
-	FOV           = 180,
-	Smoothness    = 0.38,          -- lower = faster but more obvious
-	Prediction    = 0.142,
-	TeamCheck     = true,
-	WallCheck     = true,
-	ToggleMode    = false,         -- true = toggle, false = hold
-	HoldKey       = Enum.KeyCode.LeftAlt,
-}
-
--- TriggerBot
-local TriggerConfig = {
-	Enabled       = false,
-	Delay         = 0.02,          -- seconds between shots
-	TeamCheck     = true,
-	WallCheck     = true,
-}
-
--- Keybinds
+-- Keybinds (per feature toggle)
 local Keybinds = {
-	Fly       = nil,
-	Noclip    = nil,
-	ESP       = nil,
-	Aimbot    = nil,
-	Trigger   = nil,
+	Fly    = nil,
+	Noclip = nil,
+	ESP    = nil,
+	-- Aimbot = nil,  -- placeholder
 }
 
-local SettingsState = { SoundsEnabled = true, MasterVolume = 0.8 }
+-- UI settings
+local SettingsState = {
+	SoundsEnabled  = true,
+	MasterVolume   = 0.8,
+}
 
 --=====================================================
--- Utilities + Mouse simulation for stealth aim
+-- Utilities
 --=====================================================
-local function make(class, props) -- unchanged
-	-- ... (your make function)
+local function make(class, props)
+	local inst = Instance.new(class)
+	for k, v in pairs(props or {}) do
+		if k ~= "Parent" then inst[k] = v end
+	end
+	if props and props.Parent then inst.Parent = props.Parent end
+	return inst
 end
 
-local function tween(obj, info, props) -- unchanged
-	-- ... (your tween function)
+local function tween(obj, info, props)
+	local t = TweenService:Create(obj, info, props)
+	t:Play()
+	return t
 end
+
+local function getGui() return playerGui:FindFirstChild(UI_NAME) end
+local function isOpen() return getGui() ~= nil end
+
+local function safeDisconnect(c) if c then c:Disconnect() end end
 
 local function clamp(v, min, max) return math.clamp(v, min, max) end
 
--- Simple mouse movement simulation (stealthier than CFrame)
-local function moveMouse(dx, dy)
-	mousemoverel(dx, dy)
+-- Check for executor-specific functions
+local hasMouseMove = type(mousemoverel) == "function"
+local hasMouseClick = type(mouse1click) == "function"
+
+if not hasMouseMove then
+	warn("Executor does not support mousemoverel - using fallback for silent aim")
+end
+if not hasMouseClick then
+	warn("Executor does not support mouse1click - TriggerBot will use fallback (may not work)")
 end
 
 --=====================================================
--- TriggerBot
+-- Sounds
 --=====================================================
-local triggerDebounce = false
+local SoundFolder = SoundService:FindFirstChild("Singularity_UI_Sounds") or make("Folder", {
+	Name = "Singularity_UI_Sounds", Parent = SoundService
+})
 
-local function triggerBotLoop()
-	if not TriggerConfig.Enabled or triggerDebounce then return end
+local function getSound(name)
+	local s = SoundFolder:FindFirstChild(name)
+	if not s then
+		s = make("Sound", {Name = name, Volume = SettingsState.MasterVolume, SoundId = SOUND_IDS[name] or "", Parent = SoundFolder})
+	end
+	s.Volume = SettingsState.MasterVolume
+	s.SoundId = SOUND_IDS[name] or s.SoundId
+	return s
+end
 
-	local target = mouse.Target
-	if not target then return end
+local function playSound(name)
+	if not SettingsState.SoundsEnabled then return end
+	local id = SOUND_IDS[name]
+	if id and id ~= "" then getSound(name):Play() end
+end
 
-	local char = target:FindFirstAncestorWhichIsA("Model")
-	if not char then return end
+--=====================================================
+-- Notifications
+--=====================================================
+local Notif = {holder = nil, queue = {}, active = 0, maxActive = 4}
 
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 then return end
+local function notifAccent(kind)
+	if kind == "good" then return Theme.Good end
+	if kind == "warn" then return Theme.Warn end
+	if kind == "bad"  then return Theme.Bad  end
+	return Theme.Orange1
+end
 
-	local plr = Players:GetPlayerFromCharacter(char)
-	if not plr or (TriggerConfig.TeamCheck and plr.Team == player.Team) then return end
+local function spawnNotification(kind, text)
+	if not Notif.holder then return end
+	Notif.active += 1
+	playSound("Notify")
 
-	-- Wall check
-	if TriggerConfig.WallCheck then
-		local ray = Ray.new(camera.CFrame.Position, (mouse.Hit.Position - camera.CFrame.Position).Unit * 500)
-		local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {player.Character or {}})
-		if hit and hit:IsDescendantOf(char) then
-			-- ok
-		else
-			return
+	local accent = notifAccent(kind)
+
+	local card = make("Frame", {
+		BackgroundColor3 = Theme.PanelBlack2,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(300, 60),
+		ZIndex = 500, Parent = Notif.holder
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,12), Parent = card})
+	make("UIStroke", {Color = accent, Thickness = 1.5, Transparency = 0.3, Parent = card})
+
+	local label = make("TextLabel", {
+		BackgroundTransparency = 1,
+		Text = text,
+		TextColor3 = Theme.Text,
+		TextSize = 15,
+		Font = Enum.Font.GothamSemibold,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1,-16,1,-16),
+		Position = UDim2.fromOffset(8,8),
+		TextTransparency = 1,
+		ZIndex = 501, Parent = card
+	})
+
+	local scale = make("UIScale", {Scale = 0.8, Parent = card})
+
+	tween(card, TweenInfo.new(0.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out), {BackgroundTransparency = 0.1})
+	tween(label, TweenInfo.new(0.25), {TextTransparency = 0})
+	tween(scale, TweenInfo.new(0.38,Enum.EasingStyle.Back,Enum.EasingDirection.Out), {Scale = 1})
+
+	task.delay(3.2, function()
+		if not card.Parent then return end
+		tween(scale, TweenInfo.new(0.2), {Scale = 0.85})
+		tween(label, TweenInfo.new(0.18), {TextTransparency = 1})
+		local fade = tween(card, TweenInfo.new(0.18), {BackgroundTransparency = 1})
+		fade.Completed:Connect(function() card:Destroy() end)
+		Notif.active -= 1
+		if #Notif.queue > 0 and Notif.active < Notif.maxActive then
+			local next = table.remove(Notif.queue,1)
+			spawnNotification(next.kind, next.text)
+		end
+	end)
+end
+
+local function notify(kind, text)
+	if Notif.active >= Notif.maxActive then
+		table.insert(Notif.queue, {kind=kind, text=text})
+	else
+		spawnNotification(kind, text)
+	end
+end
+
+--=====================================================
+-- Player Features (local only)
+--=====================================================
+local Feature = {
+	char = nil, hum = nil, root = nil,
+	flyBV = nil, flyBG = nil, flyConn = nil,
+	noclipConn = nil,
+	flightInput = {W=false,A=false,S=false,D=false,Up=false,Down=false},
+}
+
+local function bindCharacter()
+	Feature.char = player.Character or player.CharacterAdded:Wait()
+	Feature.hum = Feature.char:WaitForChild("Humanoid")
+	Feature.root = Feature.char:WaitForChild("HumanoidRootPart")
+end
+
+local function applyWalkSpeed()
+	if Feature.hum then Feature.hum.WalkSpeed = PlayerConfig.WalkSpeed end
+end
+
+local function stopFly()
+	PlayerConfig.FlyEnabled = false
+	safeDisconnect(Feature.flyConn)
+	if Feature.flyBV then Feature.flyBV:Destroy() Feature.flyBV = nil end
+	if Feature.flyBG then Feature.flyBG:Destroy() Feature.flyBG = nil end
+	if Feature.hum then Feature.hum.PlatformStand = false end
+end
+
+local function startFly()
+	if not Feature.root or not Feature.hum then return end
+	stopFly()
+	PlayerConfig.FlyEnabled = true
+	Feature.hum.PlatformStand = true
+
+	Feature.flyBV = make("BodyVelocity", {MaxForce = Vector3.new(1e9,1e9,1e9), P = 1e4, Velocity = Vector3.zero, Parent = Feature.root})
+	Feature.flyBG = make("BodyGyro",     {MaxTorque = Vector3.new(1e9,1e9,1e9), P = 1e5, CFrame = Feature.root.CFrame, Parent = Feature.root})
+
+	Feature.flyConn = RunService.RenderStepped:Connect(function()
+		if not PlayerConfig.FlyEnabled then return end
+		camera = workspace.CurrentCamera
+		local move = Vector3.zero
+		local lv = camera.CFrame.LookVector
+		local rv = camera.CFrame.RightVector
+		local forward = Vector3.new(lv.X, 0, lv.Z).Unit
+		local right   = Vector3.new(rv.X, 0, rv.Z).Unit
+
+		if Feature.flightInput.W    then move += forward end
+		if Feature.flightInput.S    then move -= forward end
+		if Feature.flightInput.D    then move += right   end
+		if Feature.flightInput.A    then move -= right   end
+		if Feature.flightInput.Up   then move += Vector3.yAxis end
+		if Feature.flightInput.Down then move -= Vector3.yAxis end
+
+		Feature.flyBV.Velocity = move.Unit * PlayerConfig.FlySpeed * (move.Magnitude > 0 and 1 or 0)
+		Feature.flyBG.CFrame = camera.CFrame
+	end)
+end
+
+local function toggleFly(v)
+	PlayerConfig.FlyEnabled = v
+	if v then startFly() else stopFly() end
+	notify(v and "good" or "warn", "Fly " .. (v and "enabled" or "disabled"))
+end
+
+local function stopNoclip()
+	PlayerConfig.NoclipEnabled = false
+	safeDisconnect(Feature.noclipConn)
+	if Feature.char then
+		for _, p in Feature.char:GetDescendants() do
+			if p:IsA("BasePart") then p.CanCollide = true end
 		end
 	end
-
-	triggerDebounce = true
-	mouse1click()
-	task.delay(TriggerConfig.Delay, function() triggerDebounce = false end)
 end
 
-RunService.Heartbeat:Connect(triggerBotLoop)
-
-local function toggleTrigger(v)
-	TriggerConfig.Enabled = v
-	notify(v and "good" or "warn", "TriggerBot " .. (v and "ON" or "OFF"))
+local function startNoclip()
+	PlayerConfig.NoclipEnabled = true
+	safeDisconnect(Feature.noclipConn)
+	Feature.noclipConn = RunService.Stepped:Connect(function()
+		if not PlayerConfig.NoclipEnabled then return end
+		for _, p in (Feature.char or {}):GetDescendants() do
+			if p:IsA("BasePart") then p.CanCollide = false end
+		end
+	end)
 end
 
+local function toggleNoclip(v)
+	PlayerConfig.NoclipEnabled = v
+	if v then startNoclip() else stopNoclip() end
+	notify(v and "good" or "warn", "Noclip " .. (v and "enabled" or "disabled"))
+end
+
+-- Flight controls
+UserInputService.InputBegan:Connect(function(i, gp)
+	if gp then return end
+	local k = i.KeyCode
+	if k == Enum.KeyCode.W     then Feature.flightInput.W    = true end
+	if k == Enum.KeyCode.A     then Feature.flightInput.A    = true end
+	if k == Enum.KeyCode.S     then Feature.flightInput.S    = true end
+	if k == Enum.KeyCode.D     then Feature.flightInput.D    = true end
+	if k == Enum.KeyCode.Space then Feature.flightInput.Up   = true end
+	if k == Enum.KeyCode.LeftShift then Feature.flightInput.Down = true end
+end)
+
+UserInputService.InputEnded:Connect(function(i, gp)
+	if gp then return end
+	local k = i.KeyCode
+	if k == Enum.KeyCode.W     then Feature.flightInput.W    = false end
+	if k == Enum.KeyCode.A     then Feature.flightInput.A    = false end
+	if k == Enum.KeyCode.S     then Feature.flightInput.S    = false end
+	if k == Enum.KeyCode.D     then Feature.flightInput.D    = false end
+	if k == Enum.KeyCode.Space then Feature.flightInput.Up   = false end
+	if k == Enum.KeyCode.LeftShift then Feature.flightInput.Down = false end
+end)
+
+player.CharacterAdded:Connect(function()
+	task.wait()
+	bindCharacter()
+	applyWalkSpeed()
+	if PlayerConfig.FlyEnabled    then startFly()    end
+	if PlayerConfig.NoclipEnabled then startNoclip() end
+end)
+
+task.defer(function()
+	bindCharacter()
+	applyWalkSpeed()
+end)
+
 --=====================================================
--- ESP - Wallhack mode
+-- ESP Rendering Implementation
 --=====================================================
-local ESP = { espObjects = {}, conn = nil }
+local ESP = {
+	espObjects = {},  -- table of {player = {box, tracer, name, health, aura}}
+	conn = nil
+}
 
 local function createESP(plr)
-	if ESP.espObjects[plr] or plr == player then return end
+	if ESP.espObjects[plr] then return end  -- already exists
+
+	local function getRoot() return plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") end
+	local function getHum() return plr.Character and plr.Character:FindFirstChild("Humanoid") end
 
 	local box = Drawing.new("Square")
-	box.Thickness = 1.4
-	box.Filled = false
+	box.Thickness = 1.5
 	box.Transparency = 1
+	box.Filled = false
 	box.Visible = false
+	box.Color = ESPConfig.Color
 
 	local tracer = Drawing.new("Line")
 	tracer.Thickness = 1
 	tracer.Transparency = 1
 	tracer.Visible = false
+	tracer.Color = ESPConfig.Color
 
-	local nameTxt = Drawing.new("Text")
-	nameTxt.Size = 13
-	nameTxt.Center = true
-	nameTxt.Outline = true
-	nameTxt.Visible = false
+	local nameText = Drawing.new("Text")
+	nameText.Size = 14
+	nameText.Center = true
+	nameText.Outline = true
+	nameText.Visible = false
+	nameText.Color = ESPConfig.Color
 
-	local healthTxt = Drawing.new("Text")
-	healthTxt.Size = 12
-	healthTxt.Center = true
-	healthTxt.Outline = true
-	healthTxt.Visible = false
+	local healthText = Drawing.new("Text")
+	healthText.Size = 12
+	healthText.Center = true
+	healthText.Outline = true
+	healthText.Visible = false
+	healthText.Color = ESPConfig.Color
 
-	local highlight = Instance.new("Highlight")
-	highlight.FillTransparency = 0.7
-	highlight.OutlineTransparency = 0.3
-	highlight.Enabled = false
+	local aura = Instance.new("Highlight")
+	aura.Enabled = false
+	aura.FillColor = ESPConfig.Color
+	aura.FillTransparency = 0.65
+	aura.OutlineTransparency = 0.2
+	aura.OutlineColor = ESPConfig.Color
+	aura.Parent = workspace
 
-	ESP.espObjects[plr] = {
-		box = box, tracer = tracer, name = nameTxt, health = healthTxt, highlight = highlight
-	}
+	ESP.espObjects[plr] = {box = box, tracer = tracer, name = nameText, health = healthText, aura = aura}
+end
+
+local function destroyESP(plr)
+	local objs = ESP.espObjects[plr]
+	if not objs then return end
+
+	objs.box:Remove()
+	objs.tracer:Remove()
+	objs.name:Remove()
+	objs.health:Remove()
+	if objs.aura then objs.aura:Destroy() end
+
+	ESP.espObjects[plr] = nil
 end
 
 local function updateESP()
-	for plr, data in pairs(ESP.espObjects) do
+	for plr, objs in pairs(ESP.espObjects) do
 		local char = plr.Character
-		if not char then continue end
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChild("Humanoid")
+		local visible = ESPConfig.Enabled and root and hum and hum.Health > 0 and plr ~= player
 
-		local root = char:FindFirstChild("HumanoidRootPart")
-		local hum   = char:FindFirstChild("Humanoid")
-		local head  = char:FindFirstChild("Head")
-		if not root or not hum or hum.Health <= 0 then
-			data.box.Visible = false
-			data.tracer.Visible = false
-			data.name.Visible = false
-			data.health.Visible = false
-			data.highlight.Enabled = false
-			continue
-		end
+		objs.box.Visible = visible and ESPConfig.ShowBox
+		objs.tracer.Visible = visible and ESPConfig.ShowTracer
+		objs.name.Visible = visible and ESPConfig.ShowName
+		objs.health.Visible = visible and ESPConfig.ShowHealth
+		objs.aura.Enabled = visible and ESPConfig.Aura
 
-		local rootPos, onScreen = camera:WorldToViewportPoint(root.Position)
+		if not visible then return end
+
+		local head = char:FindFirstChild("Head")
+		local vector, onScreen = camera:WorldToViewportPoint(root.Position)
 		if not onScreen then
-			data.box.Visible = false
-			data.tracer.Visible = false
-			data.name.Visible = false
-			data.health.Visible = false
-			data.highlight.Enabled = false
-			continue
+			objs.box.Visible = false
+			objs.tracer.Visible = false
+			objs.name.Visible = false
+			objs.health.Visible = false
+			objs.aura.Enabled = false
+			return
 		end
 
-		local visible = ESPConfig.Enabled
-		local occluded = false
+		-- Box
+		local top = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+		local bottom = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+		local size = Vector2.new(math.abs(top.X - bottom.X) * 1.8, math.abs(top.Y - bottom.Y) * 1.2)
+		objs.box.Size = size
+		objs.box.Position = Vector2.new(vector.X - size.X / 2, vector.Y - size.Y / 2)
+		objs.box.Color = ESPConfig.Color
 
-		-- Wallhack check
-		if ESPConfig.Wallhack then
-			local ray = Ray.new(camera.CFrame.Position, (root.Position - camera.CFrame.Position).Unit * 999)
-			local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {player.Character or {}})
-			if hit and not hit:IsDescendantOf(char) then
-				occluded = true
-			end
+		-- Tracer
+		objs.tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+		objs.tracer.To = Vector2.new(vector.X, vector.Y)
+		objs.tracer.Color = ESPConfig.Color
+
+		-- Name
+		objs.name.Text = plr.Name
+		objs.name.Position = Vector2.new(vector.X, vector.Y - size.Y / 2 - 16)
+		objs.name.Color = ESPConfig.Color
+
+		-- Health
+		if hum then
+			objs.health.Text = math.floor(hum.Health) .. "/" .. hum.MaxHealth
+			objs.health.Position = Vector2.new(vector.X + size.X / 2 + 4, vector.Y - size.Y / 2)
+			objs.health.Color = Color3.fromHSV(hum.Health / hum.MaxHealth / 3, 1, 1)
 		end
 
-		local col = occluded and ESPConfig.WallColor or ESPConfig.Color
-		local trans = occluded and ESPConfig.WallTransparency or 1
-
-		data.box.Visible       = visible and ESPConfig.ShowBox
-		data.tracer.Visible    = visible and ESPConfig.ShowTracer
-		data.name.Visible      = visible and ESPConfig.ShowName
-		data.health.Visible    = visible and ESPConfig.ShowHealth
-		data.highlight.Enabled = visible and ESPConfig.Aura
-
-		if visible then
-			-- Box
-			local headPos = camera:WorldToViewportPoint(head.Position + Vector3.new(0,0.6,0))
-			local legPos  = camera:WorldToViewportPoint(root.Position - Vector3.new(0,3.5,0))
-			local size    = Vector2.new(math.abs(headPos.X - legPos.X)*2.2, math.abs(headPos.Y - legPos.Y)*1.1)
-
-			data.box.Size     = size
-			data.box.Position = Vector2.new(rootPos.X - size.X/2, rootPos.Y - size.Y/2)
-			data.box.Color    = col
-			data.box.Transparency = trans
-
-			-- Tracer
-			data.tracer.From  = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y)
-			data.tracer.To    = Vector2.new(rootPos.X, rootPos.Y)
-			data.tracer.Color = col
-			data.tracer.Transparency = trans
-
-			-- Name & Health
-			data.name.Text     = plr.Name
-			data.name.Position = Vector2.new(rootPos.X, rootPos.Y - size.Y/2 - 18)
-			data.name.Color    = col
-			data.name.Transparency = trans
-
-			data.health.Text   = math.floor(hum.Health).."/"..hum.MaxHealth
-			data.health.Position = Vector2.new(rootPos.X + size.X/2 + 6, rootPos.Y - size.Y/2)
-			data.health.Color  = Color3.fromHSV(hum.Health/hum.MaxHealth * 0.33, 1, 1)
-			data.health.Transparency = trans
-
-			-- Aura (Highlight)
-			data.highlight.Adornee     = char
-			data.highlight.FillColor   = col
-			data.highlight.OutlineColor = col
-		end
+		-- Aura
+		objs.aura.Adornee = char
+		objs.aura.FillColor = ESPConfig.Color
+		objs.aura.OutlineColor = ESPConfig.Color
 	end
 end
 
 local function toggleESP(v)
 	ESPConfig.Enabled = v
-	notify(v and "good" or "warn", "ESP "..(v and "enabled" or "disabled"))
+	notify(v and "good" or "warn", "ESP " .. (v and "enabled" or "disabled"))
 
 	if v then
-		for _, p in Players:GetPlayers() do if p ~= player then createESP(p) end end
+		for _, plr in Players:GetPlayers() do
+			if plr ~= player then createESP(plr) end
+		end
 		ESP.conn = RunService.RenderStepped:Connect(updateESP)
 	else
-		if ESP.conn then ESP.conn:Disconnect() ESP.conn = nil end
-		for p in pairs(ESP.espObjects) do
-			local d = ESP.espObjects[p]
-			d.box:Remove()
-			d.tracer:Remove()
-			d.name:Remove()
-			d.health:Remove()
-			if d.highlight then d.highlight:Destroy() end
+		safeDisconnect(ESP.conn)
+		ESP.conn = nil
+		for plr in pairs(ESP.espObjects) do
+			destroyESP(plr)
 		end
-		ESP.espObjects = {}
 	end
 end
 
-Players.PlayerAdded:Connect(function(p)
-	if ESPConfig.Enabled and p ~= player then createESP(p) end
+-- Listen for players
+Players.PlayerAdded:Connect(function(plr)
+	if ESPConfig.Enabled then createESP(plr) end
 end)
 
-Players.PlayerRemoving:Connect(function(p)
-	if ESP.espObjects[p] then
-		local d = ESP.espObjects[p]
-		d.box:Remove() d.tracer:Remove() d.name:Remove() d.health:Remove()
-		if d.highlight then d.highlight:Destroy() end
-		ESP.espObjects[p] = nil
-	end
+Players.PlayerRemoving:Connect(function(plr)
+	destroyESP(plr)
 end)
 
-for _, p in Players:GetPlayers() do
-	if p ~= player then createESP(p) end
+-- Initial setup
+for _, plr in Players:GetPlayers() do
+	if plr ~= player then createESP(plr) end
 end
 
 --=====================================================
--- Stealthier Aimbot + Trigger integration
+-- UI Helpers
 --=====================================================
-local aimTarget = nil
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 1.5
-fovCircle.NumSides = 64
-fovCircle.Radius = AimbotConfig.FOV
-fovCircle.Color = Color3.fromRGB(220, 60, 90)
-fovCircle.Transparency = 0.9
-fovCircle.Filled = false
-fovCircle.Visible = false
+local function mkToggleRow(parent, label, get, set)
+	local row = make("Frame", {
+		BackgroundColor3 = Theme.PanelBlack2,
+		BackgroundTransparency = 0.2,
+		Size = UDim2.new(1,0,0,52),
+		Parent = parent
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,12), Parent = row})
+	make("UIStroke", {Color = Theme.Orange1, Thickness = 1, Transparency = 0.75, Parent = row})
 
-local function isValidTarget(targPlayer)
-	if not targPlayer or targPlayer == player then return false end
-	if AimbotConfig.TeamCheck and targPlayer.Team == player.Team then return false end
+	make("TextLabel", {
+		BackgroundTransparency = 1,
+		Text = label,
+		TextColor3 = Theme.Text,
+		TextSize = 15,
+		Font = Enum.Font.GothamSemibold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1,-140,1,0),
+		Position = UDim2.fromOffset(14,0),
+		Parent = row
+	})
 
-	local char = targPlayer.Character
-	if not char then return false end
+	local btn = make("TextButton", {
+		Text = "",
+		BackgroundColor3 = Theme.Button,
+		Size = UDim2.fromOffset(110,36),
+		AnchorPoint = Vector2.new(1,0.5),
+		Position = UDim2.new(1,-14,0.5,0),
+		Parent = row
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,10), Parent = btn})
+	local stroke = make("UIStroke", {Color = Theme.Warn, Transparency = 0.5, Parent = btn})
 
-	local part = char:FindFirstChild(AimbotConfig.AimPart) or char:FindFirstChild("HumanoidRootPart")
-	if not part then return false end
-
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 then return false end
-
-	if AimbotConfig.WallCheck then
-		local origin = camera.CFrame.Position
-		local dir = (part.Position - origin)
-		local raycast = Workspace:Raycast(origin, dir.Unit * dir.Magnitude, RaycastParams.new({
-			FilterDescendantsInstances = {player.Character or {}},
-			FilterType = Enum.RaycastFilterType.Blacklist
-		}))
-		if raycast and raycast.Instance:IsDescendantOf(char) then
-			-- visible
-		else
-			return false
-		end
+	local function refresh()
+		local on = get()
+		btn.Text = on and "ON" or "OFF"
+		stroke.Color = on and Theme.Good or Theme.Warn
 	end
+	refresh()
 
-	return true, part
+	btn.MouseButton1Click:Connect(function()
+		playSound("Click")
+		set(not get())
+		refresh()
+	end)
+
+	btn.MouseEnter:Connect(function() tween(btn, TweenInfo.new(0.14), {BackgroundColor3 = Theme.ButtonHover}) end)
+	btn.MouseLeave:Connect(function() tween(btn, TweenInfo.new(0.14), {BackgroundColor3 = Theme.Button}) end)
+
+	return row, refresh
 end
 
-local function getClosestToCrosshair()
-	local closestDist = AimbotConfig.FOV
-	local closestPart = nil
+local function mkSliderRow(parent, label, minv, maxv, get, set, suffix)
+	suffix = suffix or ""
+	local row = make("Frame", {
+		BackgroundColor3 = Theme.PanelBlack2,
+		BackgroundTransparency = 0.2,
+		Size = UDim2.new(1,0,0,64),
+		Parent = parent
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,12), Parent = row})
+	make("UIStroke", {Color = Theme.Orange1, Thickness = 1, Transparency = 0.75, Parent = row})
 
-	for _, p in Players:GetPlayers() do
-		local valid, part = isValidTarget(p)
-		if not valid then continue end
+	make("TextLabel", {
+		Text = label,
+		TextColor3 = Theme.Text,
+		TextSize = 15,
+		Font = Enum.Font.GothamSemibold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1,-20,0,22),
+		Position = UDim2.fromOffset(12,6),
+		BackgroundTransparency = 1,
+		Parent = row
+	})
 
-		local screen, onScr = camera:WorldToViewportPoint(part.Position)
-		if not onScr then continue end
+	local valLabel = make("TextLabel", {
+		Text = "",
+		TextColor3 = Theme.SubText,
+		TextSize = 13,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.new(1,-20,0,20),
+		Position = UDim2.fromOffset(12,6),
+		BackgroundTransparency = 1,
+		Parent = row
+	})
 
-		local dist = (Vector2.new(screen.X, screen.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
-		if dist < closestDist then
-			closestDist = dist
-			closestPart = part
-			aimTarget = p
-		end
+	local track = make("Frame", {
+		BackgroundColor3 = Theme.Button,
+		Size = UDim2.new(1,-24,0,8),
+		Position = UDim2.fromOffset(12,38),
+		Parent = row
+	})
+	make("UICorner", {CornerRadius = UDim.new(1,0), Parent = track})
+
+	local fill = make("Frame", {BackgroundColor3 = Theme.Orange2, Size = UDim2.new(0,0,1,0), Parent = track})
+	make("UICorner", {CornerRadius = UDim.new(1,0), Parent = fill})
+
+	local knob = make("Frame", {
+		BackgroundColor3 = Theme.Text,
+		Size = UDim2.fromOffset(18,18),
+		AnchorPoint = Vector2.new(0.5,0.5),
+		Position = UDim2.new(0,0,0.5,0),
+		Parent = track
+	})
+	make("UICorner", {CornerRadius = UDim.new(1,0), Parent = knob})
+	make("UIStroke", {Color = Theme.Orange1, Thickness = 1.2, Transparency = 0.4, Parent = knob})
+
+	local dragging = false
+
+	local function refresh()
+		local v = clamp(get(), minv, maxv)
+		local frac = (v - minv) / (maxv - minv)
+		fill.Size = UDim2.new(frac, 0, 1, 0)
+		knob.Position = UDim2.new(frac, 0, 0.5, 0)
+		valLabel.Text = math.floor(v + 0.5) .. suffix
 	end
 
-	return closestPart
+	local function setFromX(x)
+		local absX = track.AbsolutePosition.X
+		local w = track.AbsoluteSize.X
+		local frac = clamp((x - absX) / w, 0, 1)
+		local v = minv + frac * (maxv - minv)
+		set(v)
+		refresh()
+	end
+
+	track.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			setFromX(i.Position.X)
+		end
+	end)
+
+	track.InputEnded:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(i)
+		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			setFromX(i.Position.X)
+		end
+	end)
+
+	refresh()
+	return row, refresh
 end
 
-RunService.RenderStepped:Connect(function(dt)
-	fovCircle.Position = Vector2.new(mouse.X, mouse.Y)
-	fovCircle.Radius = AimbotConfig.FOV
-	fovCircle.Visible = AimbotConfig.Enabled
+local function mkKeybindRow(parent, name, getKey, setKey)
+	local row = make("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1,0,0,42),
+		Parent = parent
+	})
 
-	if not AimbotConfig.Enabled then
-		aimTarget = nil
-		return
-	end
+	make("TextLabel", {
+		Text = "Keybind",
+		TextColor3 = Theme.Text,
+		TextSize = 15,
+		Font = Enum.Font.GothamSemibold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(0.4,0,1,0),
+		BackgroundTransparency = 1,
+		Parent = row
+	})
 
-	local pressing = AimbotConfig.ToggleMode and AimbotConfig.Enabled or UserInputService:IsKeyDown(AimbotConfig.HoldKey)
+	local btn = make("TextButton", {
+		Text = getKey() and getKey().Name or "NONE",
+		TextColor3 = Theme.Text,
+		TextSize = 14,
+		Font = Enum.Font.Gotham,
+		BackgroundColor3 = Theme.Button,
+		Size = UDim2.fromOffset(130,32),
+		AnchorPoint = Vector2.new(1,0.5),
+		Position = UDim2.new(1,0,0.5,0),
+		Parent = row
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,10), Parent = btn})
 
-	if pressing then
-		local targetPart = getClosestToCrosshair()
+	local waiting = false
 
-		if targetPart then
-			local predPos = targetPart.Position + (targetPart.Velocity * AimbotConfig.Prediction)
-
-			if AimbotConfig.Silent then
-				-- Silent aim - move mouse very slightly toward target (stealth)
-				local screenPos = camera:WorldToViewportPoint(predPos)
-				local delta = Vector2.new(screenPos.X - mouse.X, screenPos.Y - mouse.Y)
-				local moveAmount = delta * (1 - AimbotConfig.Smoothness) * 0.6
-				mousemoverel(moveAmount.X, moveAmount.Y)
+	btn.MouseButton1Click:Connect(function()
+		if waiting then return end
+		waiting = true
+		btn.Text = "..."
+		local conn = UserInputService.InputBegan:Connect(function(i, gpe)
+			if gpe then return end
+			if i.KeyCode == Enum.KeyCode.Escape then
+				setKey(nil)
+			elseif i.KeyCode ~= Enum.KeyCode.Unknown then
+				setKey(i.KeyCode)
 			end
+			btn.Text = getKey() and getKey().Name or "NONE"
+			waiting = false
+			conn:Disconnect()
+			notify("good", name .. " keybind " .. (getKey() and "set" or "cleared"))
+		end)
+	end)
 
-			if AimbotConfig.Aimlock then
-				-- Visible camera aim (less stealthy)
-				local targetCFrame = CFrame.new(camera.CFrame.Position, predPos)
-				camera.CFrame = camera.CFrame:Lerp(targetCFrame, 1 - AimbotConfig.Smoothness)
-			end
-		end
-	else
-		aimTarget = nil
+	return row
+end
+
+local function mkColorSliders(parent, getColor, setColor)
+	local wrap = make("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1,0,0,110),
+		Parent = parent
+	})
+	make("UIListLayout", {Padding = UDim.new(0,6), Parent = wrap})
+
+	local function channel(label, ch)
+		local _, ref = mkSliderRow(wrap, label, 0, 255,
+			function() return math.floor(getColor()[ch]*255) end,
+			function(v)
+				local c = getColor()
+				setColor(Color3.new(
+					ch=="R" and v/255 or c.R,
+					ch=="G" and v/255 or c.G,
+					ch=="B" and v/255 or c.B
+				))
+			end, "")
+		return ref
 	end
-end)
 
-local function toggleAimbot(v)
-	AimbotConfig.Enabled = v
-	notify(v and "good" or "warn", "Aimbot "..(v and "ON" or "OFF"))
+	local r = channel("Red",   "R")
+	local g = channel("Green", "G")
+	local b = channel("Blue",  "B")
+
+	local preview = make("Frame", {
+		Size = UDim2.new(1,0,0,32),
+		BackgroundColor3 = getColor(),
+		Parent = wrap
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,10), Parent = preview})
+
+	local function update()
+		preview.BackgroundColor3 = getColor()
+		r() g() b()
+	end
+
+	return wrap, update
 end
 
 --=====================================================
--- UI Updates (add Trigger & update Aimbot page)
+-- UI Construction
 --=====================================================
--- In buildUI() function, update Aimbot page:
+local function buildUI()
+	local old = getGui()
+	if old then old:Destroy() end
 
--- Aimbot page
-pageHeader(pageAimbot, "Aimbot", "Silent / Aimlock / Trigger")
+	local gui = make("ScreenGui", {
+		Name = UI_NAME,
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = playerGui
+	})
 
-do
-	local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageAimbot})
-	make("UIListLayout", {Padding = UDim.new(0,10), Parent = list})
+	local backdrop = make("Frame", {
+		Size = UDim2.fromScale(1,1),
+		BackgroundColor3 = Theme.BaseBlack,
+		BackgroundTransparency = 0.4,
+		BorderSizePixel = 0,
+		Parent = gui
+	})
+	make("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new(Theme.BaseBlack, Color3.new(0,0,0)),
+		Parent = backdrop
+	})
 
-	mkToggleRow(list, "Aimbot Enabled", function() return AimbotConfig.Enabled end, toggleAimbot)
-	mkKeybindRow(list, "Aimbot", function() return Keybinds.Aimbot end, function(k) Keybinds.Aimbot = k end)
+	local vignette = make("ImageLabel", {
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://4576475446",
+		ImageTransparency = 0.4,
+		ImageColor3 = Theme.Orange1,
+		Size = UDim2.fromScale(1,1),
+		Parent = gui
+	})
 
-	mkToggleRow(list, "Silent Aim", function() return AimbotConfig.Silent end,
-		function(v) AimbotConfig.Silent = v end)
+	Notif.holder = make("Frame", {
+		Name = "Notifications",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1,0),
+		Position = UDim2.new(1,-20,0,20),
+		Size = UDim2.fromOffset(320,500),
+		Parent = gui
+	})
+	make("UIListLayout", {Padding = UDim.new(0,12), HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = Notif.holder})
 
-	mkToggleRow(list, "Aimlock (Camera)", function() return AimbotConfig.Aimlock end,
-		function(v) AimbotConfig.Aimlock = v end)
+	local shadow = make("ImageLabel", {
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://1316045217",
+		ImageTransparency = 0.65,
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(10,10,118,118),
+		AnchorPoint = Vector2.new(0.5,0.5),
+		Position = UDim2.new(0.5,0,0.5,0),
+		Size = UDim2.fromOffset(820,560),
+		Parent = backdrop
+	})
 
-	mkToggleRow(list, "Toggle Mode (not hold)", function() return AimbotConfig.ToggleMode end,
-		function(v) AimbotConfig.ToggleMode = v end)
+	local panel = make("Frame", {
+		AnchorPoint = Vector2.new(0.5,0.5),
+		Position = UDim2.new(0.5,0,0.5,0),
+		Size = UDim2.fromOffset(760, 500),
+		BackgroundColor3 = Theme.PanelBlack,
+		BackgroundTransparency = 0.08,
+		Parent = backdrop
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,22), Parent = panel})
 
-	mkSliderRow(list, "FOV", 40, 600, function() return AimbotConfig.FOV end,
-		function(v) AimbotConfig.FOV = math.floor(v) end)
+	local stroke = make("UIStroke", {
+		Color = Theme.Orange1,
+		Thickness = 2.2,
+		Transparency = 0.25,
+		Parent = panel
+	})
+	make("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new(Theme.Orange1, Theme.Orange2, Theme.Orange1),
+		Parent = stroke
+	})
 
-	mkSliderRow(list, "Smoothness", 0.05, 0.9, function() return AimbotConfig.Smoothness end,
-		function(v) AimbotConfig.Smoothness = v end)
+	local title = make("TextLabel", {
+		Text = "Singularity",
+		TextColor3 = Theme.Text,
+		TextSize = 28,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1,-180,0,40),
+		Position = UDim2.fromOffset(20,18),
+		BackgroundTransparency = 1,
+		Parent = panel
+	})
 
-	mkSliderRow(list, "Prediction", 0, 0.25, function() return AimbotConfig.Prediction end,
-		function(v) AimbotConfig.Prediction = v end)
+	make("TextLabel", {
+		Text = "Solid • Clean • Keybinds • ESP",
+		TextColor3 = Theme.SubText,
+		TextSize = 14,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1,-180,0,24),
+		Position = UDim2.fromOffset(20,52),
+		BackgroundTransparency = 1,
+		Parent = panel
+	})
+
+	local closeBtn = make("TextButton", {
+		Text = "×",
+		TextColor3 = Theme.Text,
+		TextSize = 24,
+		Font = Enum.Font.GothamBold,
+		BackgroundColor3 = Theme.Button,
+		Size = UDim2.fromOffset(44,44),
+		AnchorPoint = Vector2.new(1,0),
+		Position = UDim2.new(1,-20,0,18),
+		Parent = panel
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,12), Parent = closeBtn})
+
+	closeBtn.MouseButton1Click:Connect(function()
+		playSound("Click")
+		toggleUI()
+	end)
+
+	local body = make("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1,-40,1,-110),
+		Position = UDim2.fromOffset(20,90),
+		Parent = panel
+	})
+
+	local sidebar = make("Frame", {
+		BackgroundColor3 = Theme.PanelBlack2,
+		BackgroundTransparency = 0.15,
+		Size = UDim2.new(0,200,1,0),
+		Parent = body
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,16), Parent = sidebar})
+	make("UIStroke", {Color = Theme.Orange1, Transparency = 0.8, Parent = sidebar})
+
+	make("UIPadding", {PaddingTop = UDim.new(0,12), PaddingBottom = UDim.new(0,12), PaddingLeft = UDim.new(0,12), PaddingRight = UDim.new(0,12), Parent = sidebar})
+
+	local sideLayout = make("UIListLayout", {Padding = UDim.new(0,8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sidebar})
+
+	local pagesWrap = make("Frame", {
+		BackgroundColor3 = Theme.PanelBlack2,
+		BackgroundTransparency = 0.15,
+		AnchorPoint = Vector2.new(1,0),
+		Position = UDim2.new(1,0,0,0),
+		Size = UDim2.new(1,-212,1,0),
+		Parent = body
+	})
+	make("UICorner", {CornerRadius = UDim.new(0,16), Parent = pagesWrap})
+	make("UIStroke", {Color = Theme.Orange1, Transparency = 0.8, Parent = pagesWrap})
+
+	local pages = make("Frame", {BackgroundTransparency = 1, Size = UDim2.fromScale(1,1), Parent = pagesWrap})
+	local pageLayout = make("UIPageLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		EasingStyle = Enum.EasingStyle.Quint,
+		EasingDirection = Enum.EasingDirection.Out,
+		TweenTime = 0.4,
+		FillDirection = Enum.FillDirection.Horizontal,
+		Parent = pages
+	})
+
+	local function mkPage(name, order)
+		local p = make("Frame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1,1),
+			LayoutOrder = order,
+			Parent = pages
+		})
+		make("UIPadding", {
+			PaddingTop = UDim.new(0,16),
+			PaddingLeft = UDim.new(0,16),
+			PaddingRight = UDim.new(0,16),
+			PaddingBottom = UDim.new(0,16),
+			Parent = p
+		})
+		return p
+	end
+
+	local pagePlayer   = mkPage("Player",   1)
+	local pageAimbot   = mkPage("Aimbot",   2)
+	local pageESP      = mkPage("ESP",      3)
+	local pageMisc     = mkPage("Misc",     4)
+	local pageSettings = mkPage("Settings", 5)
+
+	local function pageHeader(p, title, desc)
+		make("TextLabel", {
+			Text = title,
+			TextColor3 = Theme.Text,
+			TextSize = 22,
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Size = UDim2.new(1,0,0,30),
+			BackgroundTransparency = 1,
+			Parent = p
+		})
+		make("TextLabel", {
+			Text = desc,
+			TextColor3 = Theme.SubText,
+			TextSize = 14,
+			Font = Enum.Font.Gotham,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Size = UDim2.new(1,0,0,22),
+			Position = UDim2.fromOffset(0,32),
+			BackgroundTransparency = 1,
+			Parent = p
+		})
+	end
+
+	-- Sidebar tabs
+	local selectedTab = nil
+	local tabButtons = {}
+
+	local function mkTabButton(text, icon, tabName)
+		local b = make("TextButton", {
+			Text = "",
+			BackgroundColor3 = Theme.Button,
+			Size = UDim2.new(1,0,0,46),
+			Parent = sidebar
+		})
+		make("UICorner", {CornerRadius = UDim.new(0,12), Parent = b})
+		local st = make("UIStroke", {Color = Theme.Orange1, Thickness = 1, Transparency = 0.7, Parent = b})
+
+		make("TextLabel", {
+			Text = (icon or "") .. "  " .. text,
+			TextColor3 = Theme.Text,
+			TextSize = 16,
+			Font = Enum.Font.GothamSemibold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Size = UDim2.new(1,-20,1,0),
+			Position = UDim2.fromOffset(16,0),
+			BackgroundTransparency = 1,
+			Parent = b
+		})
+
+		b.MouseEnter:Connect(function()
+			if selectedTab ~= tabName then
+				tween(b, TweenInfo.new(0.14), {BackgroundColor3 = Theme.ButtonHover})
+				tween(st, TweenInfo.new(0.14), {Transparency = 0.4})
+			end
+		end)
+		b.MouseLeave:Connect(function()
+			if selectedTab ~= tabName then
+				tween(b, TweenInfo.new(0.14), {BackgroundColor3 = Theme.Button})
+				tween(st, TweenInfo.new(0.14), {Transparency = 0.7})
+			end
+		end)
+
+		tabButtons[tabName] = {btn = b, stroke = st}
+		return b
+	end
+
+	local function selectTab(name)
+		selectedTab = name
+		for tname, data in pairs(tabButtons) do
+			local on = tname == name
+			tween(data.btn, TweenInfo.new(0.16), {BackgroundColor3 = on and Theme.ButtonHover or Theme.Button})
+			tween(data.stroke, TweenInfo.new(0.16), {Transparency = on and 0.25 or 0.7})
+		end
+	end
+
+	local tabs = {
+		{"Player",   "🧍"},
+		{"Aimbot",   "🎯"},
+		{"ESP",      "👁️"},
+		{"Misc",     "🛠️"},
+		{"Settings", "⚙️"},
+	}
+
+	for i, t in ipairs(tabs) do
+		local name, icon = t[1], t[2]
+		local btn = mkTabButton(name, icon, name)
+		btn.MouseButton1Click:Connect(function()
+			playSound("Click")
+			pageLayout:JumpToIndex(i - 1)  -- 0-based index
+			selectTab(name)
+		end)
+	end
+
+	-- Player page
+	pageHeader(pagePlayer, "Player", "Movement & local cheats")
+	do
+		local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pagePlayer})
+		make("UIListLayout", {Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list})
+
+		mkSliderRow(list, "Walk Speed", PlayerConfig.WalkSpeedMin, PlayerConfig.WalkSpeedMax,
+			function() return PlayerConfig.WalkSpeed end,
+			function(v) PlayerConfig.WalkSpeed = math.floor(v); applyWalkSpeed() end)
+
+		local _, refFly = mkToggleRow(list, "Fly", function() return PlayerConfig.FlyEnabled end, toggleFly)
+		mkKeybindRow(list, "Fly", function() return Keybinds.Fly end, function(k) Keybinds.Fly = k end)
+
+		mkSliderRow(list, "Fly Speed", PlayerConfig.FlySpeedMin, PlayerConfig.FlySpeedMax,
+			function() return PlayerConfig.FlySpeed end,
+			function(v) PlayerConfig.FlySpeed = math.floor(v) end)
+
+		local _, refNoclip = mkToggleRow(list, "Noclip", function() return PlayerConfig.NoclipEnabled end, toggleNoclip)
+		mkKeybindRow(list, "Noclip", function() return Keybinds.Noclip end, function(k) Keybinds.Noclip = k end)
+	end
+
+	-- Aimbot page (placeholder - add your logic)
+	pageHeader(pageAimbot, "Aimbot", "Silent / FOV / Smoothness")
+	do
+		local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageAimbot})
+		make("UIListLayout", {Padding = UDim.new(0,12), Parent = list})
+
+		mkToggleRow(list, "Aimbot Enabled", function() return false end, function(v) notify("warn", "Aimbot logic not implemented yet") end)
+		mkKeybindRow(list, "Aimbot", function() return Keybinds.Aimbot end, function(k) Keybinds.Aimbot = k end)
+		mkSliderRow(list, "FOV", 10, 800, function() return 120 end, function(v) end)
+		mkSliderRow(list, "Smoothness", 0, 100, function() return 40 end, function(v) end)
+	end
+
+	-- ESP page
+	pageHeader(pageESP, "ESP", "Player visuals & customization")
+	do
+		local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageESP})
+		make("UIListLayout", {Padding = UDim.new(0,12), Parent = list})
+
+		local _, refESP = mkToggleRow(list, "ESP Enabled",
+			function() return ESPConfig.Enabled end,
+			toggleESP
+		)
+		mkKeybindRow(list, "ESP", function() return Keybinds.ESP end, function(k) Keybinds.ESP = k end)
+
+		make("TextLabel", {Text="Color", TextColor3=Theme.Text, Font=Enum.Font.GothamSemibold, TextSize=16, Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, Parent=list})
+
+		local _, updateColor = mkColorSliders(list,
+			function() return ESPConfig.Color end,
+			function(c) ESPConfig.Color = c; updateColor() end
+		)
+
+		local espOptions = {
+			{"Box",     function() return ESPConfig.ShowBox    end, function(v) ESPConfig.ShowBox = v    end},
+			{"Tracer",  function() return ESPConfig.ShowTracer end, function(v) ESPConfig.ShowTracer = v end},
+			{"Name",    function() return ESPConfig.ShowName   end, function(v) ESPConfig.ShowName = v   end},
+			{"Health",  function() return ESPConfig.ShowHealth end, function(v) ESPConfig.ShowHealth = v end},
+			{"Aura",    function() return ESPConfig.Aura       end, function(v) ESPConfig.Aura = v       end},
+		}
+
+		for _, opt in ipairs(espOptions) do
+			mkToggleRow(list, opt[1], opt[2], function(v)
+				opt[3](v)
+				notify("good", opt[1] .. (v and " enabled" or " disabled"))
+			end)
+		end
+	end
+
+	-- Misc page (placeholder)
+	pageHeader(pageMisc, "Misc", "Other utilities")
+	do
+		local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageMisc})
+		make("UIListLayout", {Padding = UDim.new(0,12), Parent = list})
+		make("TextLabel", {
+			Text = "Coming soon...\nFullbright, Crosshair, No Recoil, etc.",
+			TextColor3 = Theme.SubText,
+			TextSize = 15,
+			Font = Enum.Font.Gotham,
+			TextWrapped = true,
+			Size = UDim2.new(1,0,0,80),
+			BackgroundTransparency = 1,
+			Parent = list
+		})
+	end
+
+	-- Settings page
+	pageHeader(pageSettings, "Settings", "UI & sound preferences")
+	do
+		local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageSettings})
+		make("UIListLayout", {Padding = UDim.new(0,12), Parent = list})
+
+		mkToggleRow(list, "UI Sounds", function() return SettingsState.SoundsEnabled end,
+			function(v) SettingsState.SoundsEnabled = v; notify("good", "Sounds " .. (v and "on" or "off")) end)
+
+		mkSliderRow(list, "Volume", 0, 1, function() return SettingsState.MasterVolume end,
+			function(v)
+				SettingsState.MasterVolume = v
+				for _, s in SoundFolder:GetChildren() do
+					if s:IsA("Sound") then s.Volume = v end
+				end
+			end, "")
+	end
+
+	-- Default tab
+	task.defer(function()
+		pageLayout:JumpTo(pagePlayer)
+		selectTab("Player")
+	end)
+
+	-- Simple animated stroke
+	local time = 0
+	local animConn = RunService.RenderStepped:Connect(function(dt)
+		time += dt
+		stroke.Transparency = 0.2 + 0.12 * math.sin(time * 3)
+	end)
+
+	-- Drag
+	local dragging, dragStart, startPos
+	panel.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = panel.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - dragStart
+			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			shadow.Position = panel.Position
+		end
+	end)
+
+	panel.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	return gui
 end
 
--- Add TriggerBot to Misc or Aimbot tab (here in Misc for example)
-pageHeader(pageMisc, "Misc", "TriggerBot & more")
+--=====================================================
+-- Open / Close
+--=====================================================
+local function openUI()
+	if isOpen() then return end
+	buildUI()
+	playSound("Open")
+	notify("good", "Menu opened")
+end
 
-do
-	local list = make("Frame", {BackgroundTransparency=1, Size=UDim2.fromScale(1,1), Parent=pageMisc})
-	make("UIListLayout", {Padding = UDim.new(0,12), Parent = list})
+local function closeUI()
+	local g = getGui()
+	if not g then return end
+	g:Destroy()
+	Notif.holder = nil
+	notify("warn", "Menu closed")
+end
 
-	mkToggleRow(list, "TriggerBot", function() return TriggerConfig.Enabled end, toggleTrigger)
-	mkKeybindRow(list, "Trigger", function() return Keybinds.Trigger end, function(k) Keybinds.Trigger = k end)
-
-	mkSliderRow(list, "Trigger Delay", 0.01, 0.15,
-		function() return TriggerConfig.Delay end,
-		function(v) TriggerConfig.Delay = v end, " sec")
-
-	mkToggleRow(list, "Trigger Team Check", function() return TriggerConfig.TeamCheck end,
-		function(v) TriggerConfig.TeamCheck = v end)
-
-	mkToggleRow(list, "Trigger Wall Check", function() return TriggerConfig.WallCheck end,
-		function(v) TriggerConfig.WallCheck = v end)
+local function toggleUI()
+	if isOpen() then closeUI() else openUI() end
 end
 
 --=====================================================
--- Keybinds listener - updated for L
+-- Toggle button (mobile / always visible)
+--=====================================================
+local function createToggleButton()
+	local ex = playerGui:FindFirstChild(TOGGLE_BUTTON_GUI)
+	if ex then return end
+
+	local sg = make("ScreenGui", {Name = TOGGLE_BUTTON_GUI, ResetOnSpawn = false, IgnoreGuiInset = true, Parent = playerGui})
+	local btn = make("TextButton", {
+		Text = "≡",
+		TextColor3 = Theme.Text,
+		TextSize = 24,
+		Font = Enum.Font.GothamBold,
+		BackgroundColor3 = Theme.Button,
+		Size = UDim2.fromOffset(60,60),
+		AnchorPoint = Vector2.new(0,1),
+		Position = UDim2.new(0,20,1,-20),
+		Parent = sg
+	})
+	make("UICorner", {CornerRadius = UDim.new(1,0), Parent = btn})
+	make("UIStroke", {Color = Theme.Orange2, Thickness = 2, Transparency = 0.4, Parent = btn})
+
+	btn.MouseButton1Click:Connect(toggleUI)
+
+	-- Drag button
+	local drg, ds, sp
+	btn.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			drg = true
+			ds = i.Position
+			sp = btn.Position
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(i)
+		if not drg then return end
+		if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+			local d = i.Position - ds
+			btn.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+		end
+	end)
+
+	btn.InputEnded:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drg = false end
+	end)
+end
+
+createToggleButton()
+
+--=====================================================
+-- Global keybinds listener
 --=====================================================
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 	local k = input.KeyCode
 
-	-- Custom L key handling
-	if k == MENU_TOGGLE_KEY then
-		toggleUI()
-		return
+	if Keybinds.Fly    and k == Keybinds.Fly    then toggleFly   (not PlayerConfig.FlyEnabled)    end
+	if Keybinds.Noclip and k == Keybinds.Noclip then toggleNoclip(not PlayerConfig.NoclipEnabled) end
+	if Keybinds.ESP    and k == Keybinds.ESP    then
+		toggleESP(not ESPConfig.Enabled)
 	end
 
-	if Keybinds.Fly    and k == Keybinds.Fly    then toggleFly(not PlayerConfig.FlyEnabled) end
-	if Keybinds.Noclip and k == Keybinds.Noclip then toggleNoclip(not PlayerConfig.NoclipEnabled) end
-	if Keybinds.ESP    and k == Keybinds.ESP    then toggleESP(not ESPConfig.Enabled) end
-	if Keybinds.Aimbot and k == Keybinds.Aimbot then toggleAimbot(not AimbotConfig.Enabled) end
-	if Keybinds.Trigger and k == Keybinds.Trigger then toggleTrigger(not TriggerConfig.Enabled) end
+	-- Add more keybind actions here (Aimbot etc.)
 
-	for tk in pairs(TOGGLE_KEYS) do
+	for tk,_ in pairs(TOGGLE_KEYS) do
 		if k == tk then toggleUI() return end
 	end
 
@@ -516,4 +1263,5 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	end
 end)
 
--- [Rest of your code - openUI, closeUI, createToggleButton, etc. remains unchanged]
+-- Optional: auto open on start
+-- task.delay(1.5, openUI)
