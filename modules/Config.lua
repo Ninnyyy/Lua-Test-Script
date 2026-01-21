@@ -15,8 +15,7 @@ Config.DefaultJumpPower     = 50
 Config.DefaultAimbotFOV     = 50
 Config.DefaultRotateSpeed   = 100
 
--- Add more as you implement features
-Config.AutoRepairSpeed      = 0.12   -- seconds between attempts
-Config.AutoPalletDistance   = 14     -- studs
+Config.AutoRepairSpeed      = 0.12
+Config.AutoPalletDistance   = 14
 
 return Config
